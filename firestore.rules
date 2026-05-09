@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default deny ALL
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper for testing connection
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email == 'tailieuhay53@gmail.com';
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // --- Collections ---
+
+    // 1. Documents (Marketplace Items)
+    match /documents/{documentId} {
+      allow read: if true; 
+      allow write: if isAdmin();
+    }
+
+    // 2. Document Files (Protected Download Links)
+    match /documentFiles/{documentId} {
+      allow read: if isAdmin() || (
+        isSignedIn() && exists(/databases/$(database)/documents/purchases/$(request.auth.uid + '_' + documentId))
+      );
+      allow write: if isAdmin();
+    }
+
+    // 3. User Profiles
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 4. Purchases (ONLY Admin can grant access)
+    match /purchases/{purchaseId} {
+      allow read: if isAdmin() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid));
+      allow write: if isAdmin();
+    }
+
+    // 5. Access Requests (Users create, Admin approves/rejects)
+    match /accessRequests/{requestId} {
+      allow get, list: if (request.auth != null && request.auth.token.email == 'tailieuhay53@gmail.com') || isAdmin() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid));
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid 
+                    && request.resource.data.status == 'pending';
+      allow update: if (request.auth != null && request.auth.token.email == 'tailieuhay53@gmail.com') || isAdmin() || (
+        isSignedIn() && resource.data.userId == request.auth.uid && 
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending'
+      );
+      allow delete: if (request.auth != null && request.auth.token.email == 'tailieuhay53@gmail.com') || isAdmin();
+    }
+
+    // 6. Global Stats (Publicly readable, increment-only update)
+    match /globalStats/{docId} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create: if docId == 'main';
+      allow update: if docId == 'main' && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['totalViews', 'totalUsers', 'totalDocs', 'totalSales']);
+    }
+  }
+}
