@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  Download, Share2, ShieldCheck, 
-  ArrowLeft, Loader2, Sparkles, 
-  CheckCircle2, CreditCard, Clock, AlertCircle, Copy,
-  ExternalLink, Eye, BookOpen
+  Download, Share2, 
+  ArrowLeft, Loader2, 
+  CheckCircle2, CreditCard,
+  X, User, Folder, MessageCircle,
+  Copy, Check
 } from 'lucide-react';
 import { 
   getDocumentById, getSecureFileUrl,
@@ -12,14 +13,16 @@ import {
   getDocuments, MARKEPLTACE_COLLECTIONS
 } from '../services/marketplaceService';
 import { Document } from '../types';
-import { auth, db } from '../lib/firebase';
+import { useAuth } from '../context/AuthContext';
+import { db } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { DocumentCard } from '../components/home/DocumentCard';
 
 export const DocumentDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [documentData, setDocumentData] = useState<Document | null>(null);
   const [hasPurchased, setHasPurchased] = useState(false);
   const [requestStatus, setRequestStatus] = useState<string | null>(null);
@@ -27,8 +30,13 @@ export const DocumentDetail: React.FC = () => {
   const [downloading, setDownloading] = useState(false);
   const [processingRequest, setProcessingRequest] = useState(false);
   const [relatedDocs, setRelatedDocs] = useState<Document[]>([]);
+  const [copied, setCopied] = useState(false);
+
+  // Registration Form State
+  const [isRegModalOpen, setIsRegModalOpen] = useState(false);
 
   useEffect(() => {
+    window.scrollTo(0, 0);
     const init = async () => {
       if (!id) return;
       try {
@@ -39,8 +47,7 @@ export const DocumentDetail: React.FC = () => {
           // Fetch related documents
           const allDocs = await getDocuments();
           const related = allDocs
-            .filter(d => d.id !== id && d.category === data.category)
-            .slice(0, 4);
+            .filter(d => d.id !== id && (d.category === data.category));
           setRelatedDocs(related);
         }
       } catch (error) {
@@ -53,19 +60,21 @@ export const DocumentDetail: React.FC = () => {
   }, [id]);
 
   useEffect(() => {
-    if (!id || !auth.currentUser) {
+    if (!id || !user) {
       setHasPurchased(false);
       setRequestStatus(null);
       return;
     }
 
-    const userId = auth.currentUser.uid;
+    const userId = user.uid;
     const purchaseRef = doc(db, MARKEPLTACE_COLLECTIONS.PURCHASES, `${userId}_${id}`);
     const requestRef = doc(db, MARKEPLTACE_COLLECTIONS.REQUESTS, `${userId}_${id}`);
 
     // Listen for purchases
     const unsubPurchase = onSnapshot(purchaseRef, (snap) => {
       setHasPurchased(snap.exists());
+    }, (error) => {
+      console.error('Purchase Listener Error:', error);
     });
 
     // Listen for requests
@@ -75,35 +84,42 @@ export const DocumentDetail: React.FC = () => {
       } else {
         setRequestStatus(null);
       }
+    }, (error) => {
+      console.error('Request Listener Error:', error);
     });
 
     return () => {
       unsubPurchase();
       unsubRequest();
     };
-  }, [id, auth.currentUser?.uid]);
+  }, [id, user]);
 
   const handlePurchase = async () => {
-    if (!auth.currentUser) {
-      alert('Vui lòng đăng nhập để thực hiện yêu cầu mua tài liệu!');
+    if (!user) {
+      navigate('/profile');
       return;
     }
+    if (!documentData) return;
+    setIsRegModalOpen(true);
+  };
+
+  const confirmRegistration = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!documentData) return;
 
     setProcessingRequest(true);
     try {
-      console.log('DocumentDetail: Submitting access request for document:', documentData.id);
-      // Open form immediately for better reliability (triggered by user interaction)
-      const formUrl = `https://docs.google.com/forms/d/e/1FAIpQLSeu4HsdHzBD_9dWKcvEoPYW6aN8lcNC07OL9GfNPSkdyxmqEw/viewform?usp=sf_link`;
-      window.open(formUrl, '_blank');
-
-      await submitAccessRequest(documentData);
-      console.log('DocumentDetail: Submit success!');
-      setRequestStatus('pending');
-      alert('Đã gửi lại yêu cầu! Vui lòng điền Form và chờ Admin kiểm tra.');
+      await submitAccessRequest(documentData, {});
+      if (documentData.requiresManualAccess) {
+        setRequestStatus('pending');
+      } else {
+        setRequestStatus('approved');
+        setHasPurchased(true);
+      }
+      setIsRegModalOpen(false);
     } catch (error) {
-      console.error('DocumentDetail: Submit error:', error);
-      alert('Có lỗi xảy ra: ' + (error instanceof Error ? error.message : String(error)));
+      console.error(error);
+      alert(error instanceof Error ? error.message : 'Đã có lỗi xảy ra.');
     } finally {
       setProcessingRequest(false);
     }
@@ -132,20 +148,159 @@ export const DocumentDetail: React.FC = () => {
   };
 
   const handleDownload = async () => {
-    if (!id || !hasPurchased) return;
+    if (!id) return;
+
+    if (!user) {
+      alert('Vui lòng đăng nhập để tải tài liệu.');
+      navigate('/profile');
+      return;
+    }
+    
     setDownloading(true);
     try {
       const url = await getSecureFileUrl(id);
       if (url) {
         await trackDownload(id);
         window.open(url, '_blank');
+      } else {
+        throw new Error('Không tìm thấy file.');
       }
     } catch (error) {
-      alert('Lỗi khi tải file: ' + (error instanceof Error ? error.message : String(error)));
+      // Providing more context for the user
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('permission')) {
+        alert('Tài khoản của bạn chưa được cấp quyền tải tài liệu này. Vui lòng kiểm tra lại trạng thái giao dịch.');
+      } else {
+        alert('Lỗi khi tải file: ' + message);
+      }
     } finally {
       setDownloading(false);
     }
   };
+
+  const handleCopyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const renderPurchaseCard = () => (
+    <div className="bg-white p-3 md:p-4 rounded-xl space-y-3 border border-slate-100 shadow-none overflow-hidden relative">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-sm font-bold text-slate-900">Giá:</span>
+        <span className="text-3xl font-black text-rose-600 tracking-tighter">
+          {documentData?.price === 0 ? 'FREE' : `${documentData?.price.toLocaleString()} đ`}
+        </span>
+      </div>
+
+      <div className="p-2 bg-amber-50 rounded-lg">
+        <ul className="space-y-1">
+          <li className="flex gap-1.5 text-[10px] text-amber-900 font-medium">
+            <span className="text-amber-500">•</span>
+            <span>Tự động cập nhật nội dung mới</span>
+          </li>
+        </ul>
+      </div>
+
+      <div className="space-y-2.5">
+        {(hasPurchased || documentData?.price === 0 || (documentData?.requiresManualAccess && (requestStatus === 'pending' || requestStatus === 'approved'))) ? (
+          <>
+            {(documentData?.requiresManualAccess && documentData?.price !== 0 && (requestStatus === 'pending' || requestStatus === 'approved')) && (
+              <div className="p-5 bg-emerald-50 border-2 border-emerald-200 rounded-xl text-center mb-3 shadow-sm">
+                <div className="text-emerald-900 font-black text-[13px] uppercase tracking-wide leading-relaxed">
+                  {requestStatus === 'approved' 
+                    ? '🎉 Giao dịch hoàn tất! Nhấn nút dưới để vào link gốc, sau đó đợi Admin duyệt quyền qua Gmail nhé!'
+                    : '⏳ Đã đăng ký. Vui lòng nhấn nút bên dưới để vào link gốc, sau đó đợi Admin duyệt quyền qua Gmail nhé!'
+                  }
+                  <br />
+                  <span className="text-[11px] text-emerald-700 mt-2 block font-bold">
+                    Liên hệ Zalo 
+                    <button 
+                      onClick={() => handleCopyToClipboard('0386281920')}
+                      className="inline-flex items-center gap-1.5 ml-1.5 px-2 py-0.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-600 rounded-md transition-colors group cursor-pointer"
+                    >
+                      <span className="text-[14px] underline font-black">0386281920</span>
+                      {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    </button>
+                    để được hỗ trợ duyệt nhanh nhất!
+                  </span>
+                </div>
+              </div>
+            )}
+            <button 
+              onClick={handleDownload}
+              disabled={downloading}
+              className="w-full py-2 bg-emerald-600 hover:bg-slate-900 text-white rounded-lg font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+            >
+              {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+              {documentData?.requiresManualAccess ? 'Vào tài liệu' : (documentData?.price === 0 ? 'Tải miễn phí' : 'Tải file (.pdf)')}
+            </button>
+          </>
+        ) : (
+          <div className="space-y-2.5">
+            {requestStatus === 'pending' ? (
+              <div className="p-2 bg-indigo-50/30 border border-indigo-100 rounded-lg text-center">
+                <p className="text-indigo-900 font-black text-[9px] uppercase tracking-widest">
+                  ĐANG CHỜ DUYỆT THANH TOÁN
+                </p>
+              </div>
+            ) : (requestStatus === 'rejected' || processingRequest) ? (
+              <div className="p-2 bg-red-50 border border-red-100 rounded-lg text-center">
+                <p className="text-red-900 font-black text-[9px] uppercase tracking-widest">
+                  {processingRequest ? 'Đang gửi...' : 'Từ chối'}
+                </p>
+                {!processingRequest && (
+                  <button onClick={handlePurchase} className="w-full py-1 bg-red-600 hover:bg-slate-900 text-white rounded text-[9px] font-black uppercase mt-1">
+                    Gửi lại
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button 
+                onClick={handlePurchase}
+                disabled={processingRequest}
+                className="w-full py-2 bg-indigo-600 hover:bg-slate-900 text-white rounded-lg font-black text-[10px] uppercase transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+              >
+                {processingRequest ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+                THANH TOÁN & SỞ HỮU NGAY
+              </button>
+            )}
+            <p className="text-[9px] text-slate-500 font-medium text-center">
+              Duyệt trong 15-30p.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-widest">
+          <span>✓ Mới 2026</span>
+        </div>
+        <button 
+          onClick={handleShare}
+          className="flex items-center gap-1 text-[8px] font-black text-slate-400 hover:text-indigo-600 uppercase tracking-widest"
+        >
+          <Share2 className="w-3 h-3" />
+          <span>Chia sẻ</span>
+        </button>
+      </div>
+
+      <a 
+        href="https://Zalo.me/0386281920" 
+        target="_blank" 
+        rel="noreferrer"
+        className="mt-4 flex items-center gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-xl group hover:border-indigo-200 transition-all"
+      >
+        <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+          <MessageCircle className="w-4 h-4" />
+        </div>
+        <div className="flex-1">
+          <p className="text-[10px] font-black text-indigo-900 uppercase">Thắc mắc? Liên hệ ngay</p>
+          <p className="text-[10px] text-indigo-600 font-bold">Zalo Group hỗ trợ</p>
+        </div>
+      </a>
+    </div>
+  );
 
   if (loading) {
     return (
@@ -165,320 +320,319 @@ export const DocumentDetail: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F7FF] pt-32 pb-20">
+    <div className="min-h-screen bg-[#F5F7FF] pt-24 pb-32 lg:pb-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <button 
           onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-[#6B7280] hover:text-indigo-600 mb-8 transition-colors group font-black uppercase tracking-[0.2em] text-[10px]"
+          className="flex items-center gap-2 text-[#6B7280] hover:text-indigo-600 mb-6 transition-colors group font-black uppercase tracking-[0.2em] text-[10px]"
         >
-          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> Quay lại
+          <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" /> Quay lại
         </button>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+        {/* Registration Modal */}
+        <AnimatePresence>
+          {isRegModalOpen && documentData && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                exit={{ opacity: 0 }}
+                onClick={() => setIsRegModalOpen(false)}
+                className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="relative w-full max-w-sm bg-white rounded-[2rem] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
+              >
+                <button 
+                  onClick={() => setIsRegModalOpen(false)} 
+                  className="absolute top-4 right-4 z-20 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-all border border-white/20 shadow-sm"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+
+                {/* Header Section */}
+                <div className="bg-[#0B1221] pt-6 pb-20 px-6 text-center relative overflow-hidden shrink-0">
+                   <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-500/20" />
+                   <h3 className="text-lg font-black text-white uppercase tracking-tight relative z-10">Thanh Toán & Xác Nhận</h3>
+                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1 relative z-10">Quét mã QR để hoàn tất</p>
+                </div>
+
+                {/* Content Section */}
+                <div className="px-6 pb-6 -mt-16 relative z-10 flex-1 overflow-y-auto no-scrollbar flex flex-col items-center">
+                  
+                  {/* QR Code */}
+                  <div className="w-44 flex flex-col items-center mb-5">
+                    <div className="bg-white p-2.5 rounded-[1.5rem] shadow-xl border border-slate-100 w-full h-44">
+                      <img 
+                        src={`https://api.vietqr.io/image/970422-0386281920-qr_only.jpg?accountName=LE%20QUANG%20LONG&addInfo=TL%20${documentData.id.slice(0, 8).toUpperCase()}`} 
+                        alt="VietQR MB Bank"
+                        className="w-full h-full object-contain rounded-xl mix-blend-multiply"
+                      />
+                    </div>
+                    
+                    <button
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        try {
+                          const response = await fetch(`https://api.vietqr.io/image/970422-0386281920-qr_only.jpg?accountName=LE%20QUANG%20LONG&addInfo=TL%20${documentData.id.slice(0, 8).toUpperCase()}`);
+                          const blob = await response.blob();
+                          const url = window.URL.createObjectURL(blob);
+                          const link = window.document.createElement('a');
+                          link.href = url;
+                          link.download = `QR_ThanhToan_TL_${documentData.id.slice(0, 8).toUpperCase()}.jpg`;
+                          window.document.body.appendChild(link);
+                          link.click();
+                          window.document.body.removeChild(link);
+                          window.URL.revokeObjectURL(url);
+                        } catch (error) {
+                          console.error("Lỗi khi tải ảnh QR:", error);
+                          alert("Không thể tải ảnh QR. Vui lòng thử lại sau.");
+                        }
+                      }}
+                      className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-sm active:scale-95 border border-indigo-100/50"
+                    >
+                      <Download className="w-4 h-4" />
+                      Tải QR
+                    </button>
+                  </div>
+
+                  {/* Account Details */}
+                  <div className="w-full bg-slate-50 rounded-2xl p-4 mb-5 border border-slate-100 space-y-2.5">
+                    <div className="flex justify-between items-center">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Chủ tài khoản</p>
+                      <p className="text-xs font-black text-[#0B1221]">LE QUANG LONG</p>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Số tài khoản</p>
+                      <p className="text-xs font-black text-[#0B1221]">0386281920</p>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Ngân hàng</p>
+                      <p className="text-xs font-black text-[#0B1221]">MB BANK</p>
+                    </div>
+                    <div className="h-px w-full bg-slate-200/60 my-1" />
+                    <div className="flex justify-between items-center">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Nội dung CK</p>
+                      <p className="text-[9px] font-black text-amber-600 bg-amber-100 px-2 py-0.5 rounded uppercase">Email của bạn</p>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="w-full space-y-3">
+                    <a 
+                      href="https://zalo.me/0386281920" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="w-full flex items-center justify-center gap-2 bg-[#0068FF] hover:bg-[#0054cc] text-white py-3.5 rounded-xl font-bold transition-all shadow-md active:scale-95 text-[11px] uppercase tracking-wide"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      Gửi ảnh giao dịch qua Zalo
+                    </a>
+
+                    <button 
+                      onClick={confirmRegistration}
+                      disabled={processingRequest}
+                      className="w-full py-3.5 bg-[#0B1221] hover:bg-slate-800 text-white rounded-xl font-black uppercase tracking-widest text-[10px] transition-all shadow-lg active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {processingRequest ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Đang xử lý...</span>
+                        </>
+                      ) : (
+                        'Đã chuyển khoản xong'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
           {/* Main Content */}
           <div className="lg:col-span-8 space-y-8">
-            <div className="relative group">
-              <div className="aspect-[3/4] rounded-[2.5rem] bg-white border border-slate-200 overflow-hidden relative shadow-2xl flex flex-col items-center justify-center p-8 text-center transition-all duration-500 group-hover:border-indigo-600/30">
-                {/* Atmospheric Background - Blurred version of the actual thumbnail */}
-                <div className="absolute inset-0 z-0">
-                  <img 
-                    src={documentData.thumbnailUrl} 
-                    alt="" 
-                    className="w-full h-full object-cover blur-3xl opacity-20 scale-110"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-b from-slate-950/40 via-slate-950/80 to-slate-950" />
-                </div>
+            {/* Unified Document Card */}
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden">
+              <div className="p-5 md:p-6 relative group">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 relative z-10">
+                  
+                  <div className="shrink-0 w-full sm:w-40 rounded-2xl shadow-inner border border-slate-100 overflow-hidden group/preview relative aspect-[3/4] bg-slate-50">
+                    <img 
+                      src={documentData.thumbnailUrl} 
+                      alt={documentData.title} 
+                      className="w-full h-full object-contain" 
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
 
-                {/* Creative Read Trial Section - Premium Glassmorphism */}
-                <div className="relative group w-full max-w-4xl px-4 mb-20">
-                  {/* Floating Glowing Orbs */}
-                  <div className="absolute top-1/2 left-1/4 -translate-y-1/2 w-64 h-64 bg-indigo-500/20 rounded-full blur-[120px] animate-pulse pointer-events-none" />
-                  <div className="absolute top-1/2 right-1/4 -translate-y-1/2 w-64 h-64 bg-purple-500/20 rounded-full blur-[120px] animate-pulse delay-700 pointer-events-none" />
+                  <div className="flex-1 flex flex-col space-y-4 pt-1 w-full">
+                    <div className="space-y-1.5 text-center sm:text-left">
+                      <span className="text-[9px] font-black text-indigo-600 uppercase tracking-[0.2em] bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
+                        OFFICIAL DOCUMENT
+                      </span>
+                      <h2 className="text-lg md:text-xl font-black text-slate-900 leading-tight uppercase tracking-tight">
+                        {documentData.title}
+                      </h2>
+                      <p className="text-xs text-slate-500 font-medium mt-2 leading-relaxed">
+                        {documentData.description}
+                      </p>
 
-                  <motion.div
-                    initial={{ opacity: 0, y: 30 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    className="relative overflow-hidden bg-slate-900/40 backdrop-blur-3xl rounded-[3.5rem] border border-white/10 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.5)] group/container"
-                  >
-                    <button 
-                      onClick={() => window.open(documentData.previewUrl, '_blank')}
-                      className="w-full text-left flex flex-col md:flex-row items-center gap-12 p-8 md:p-16 relative overflow-hidden"
-                    >
-                      {/* Background Detail */}
-                      <div className="absolute top-0 right-0 p-8 opacity-10 rotate-12 scale-150 pointer-events-none">
-                        <BookOpen className="w-64 h-64 text-white" />
-                      </div>
-
-                      {/* Left Side: Creative Visual Stack */}
-                      <div className="relative shrink-0 w-48 h-64 md:w-64 md:h-80 group/visual">
-                        {/* Shadow layers */}
-                        <div className="absolute inset-0 bg-indigo-600/20 rounded-2xl rotate-[-12deg] blur-sm transition-transform group-hover/container:rotate-[-15deg] duration-700" />
-                        <div className="absolute inset-0 bg-indigo-400/20 rounded-2xl rotate-[-6deg] blur-sm transition-transform group-hover/container:rotate-[-8deg] duration-700 delay-75" />
-                        
-                        {/* Main "Book" Preview */}
-                        <motion.div 
-                          animate={{ y: [0, -10, 0] }}
-                          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                          className="absolute inset-0 bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col"
-                        >
-                          <div className="h-1/3 bg-slate-50 border-b border-slate-100 flex items-center justify-center relative">
-                            <img 
-                              src={documentData.thumbnailUrl} 
-                              alt="" 
-                              className="absolute inset-0 w-full h-full object-cover opacity-20"
-                              referrerPolicy="no-referrer"
-                            />
-                            <div className="bg-indigo-600 text-white p-3 rounded-xl shadow-lg relative z-10">
-                              <Eye className="w-8 h-8" />
-                            </div>
-                          </div>
-                          <div className="p-6 space-y-4">
-                            <div className="h-2 w-3/4 bg-slate-100 rounded-full" />
-                            <div className="h-2 w-full bg-slate-50 rounded-full" />
-                            <div className="h-2 w-5/6 bg-slate-50 rounded-full" />
-                            <div className="pt-4 flex gap-2">
-                              <div className="h-1.5 w-1.5 rounded-full bg-indigo-200" />
-                              <div className="h-1.5 w-1.5 rounded-full bg-indigo-200" />
-                              <div className="h-1.5 w-1.5 rounded-full bg-indigo-200" />
-                            </div>
-                          </div>
-                        </motion.div>
-                      </div>
-
-                      {/* Right Side: Copy & Action */}
-                      <div className="flex-1 space-y-8 text-center md:text-left relative z-10">
-                        <div className="space-y-4">
-                          <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-full">
-                            <Sparkles className="w-4 h-4 text-indigo-400" />
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300">Tính năng đọc thử bản quyền</span>
-                          </div>
-                          <h3 className="text-4xl md:text-5xl font-black text-white leading-[1.1] tracking-tight">
-                            Khám phá nội dung <br />
-                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-indigo-400 bg-300% animate-gradient">trước khi mua.</span>
-                          </h3>
-                          <p className="text-slate-400 font-medium text-lg max-w-md mx-auto md:mx-0">
-                            Đã có hơn 1000+ người đọc thử và hài lòng với chất lượng kiến thức trong bộ tài liệu này.
-                          </p>
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row items-center gap-6 pt-4">
-                          <div className="relative group/btn">
-                            <div className="absolute -inset-1 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl blur opacity-30 group-hover/btn:opacity-100 transition-opacity" />
-                            <div className="relative px-8 py-5 bg-white text-slate-900 rounded-2xl font-black text-sm uppercase tracking-widest flex items-center gap-3 transition-transform group-hover/btn:-translate-y-1">
-                              Nhấp để xem bản mẫu
-                              <ArrowLeft className="w-5 h-5 rotate-180" />
-                            </div>
-                          </div>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                            Miễn phí • Không cần đăng ký
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                  </motion.div>
-                </div>
-
-                {/* Corner Accents */}
-                <div className="absolute top-0 left-0 w-32 h-32 bg-indigo-600/5 rounded-br-full blur-3xl" />
-                <div className="absolute bottom-0 right-0 w-40 h-40 bg-purple-600/5 rounded-tl-full blur-3xl" />
-              </div>
-              
-              {!hasPurchased && (
-                <div className="mt-6 flex items-center justify-between py-4 px-8 bg-indigo-50/50 border border-indigo-100 rounded-2xl group/notice hover:bg-indigo-100 transition-all">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-indigo-600/10 flex items-center justify-center text-indigo-600 group-hover/notice:scale-110 transition-transform">
-                      <ShieldCheck className="w-6 h-6" />
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-0.5">Bản xem trước miễn phí</p>
-                      <p className="text-[10px] text-slate-500 font-medium tracking-tight">Mua bản gốc để nhận link tải trọn bộ tài liệu 100% chất lượng.</p>
-                    </div>
-                  </div>
-                  <Sparkles className="w-5 h-5 text-indigo-600/40 hidden md:block" />
-                </div>
-              )}
-            </div>
 
-            <div className="bg-white p-10 rounded-[2.5rem] border border-white shadow-[0_10px_30px_rgba(0,0,0,0.04)]">
-              <h1 className="text-3xl md:text-4xl font-black text-slate-900 mb-8 leading-tight tracking-tight">
-                {documentData.title}
-              </h1>
-              <div className="flex flex-wrap items-center gap-10 text-[#6B7280] text-sm mb-12 border-b border-slate-100 pb-12">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-100">
-                    <Download className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <span className="text-slate-900 font-black text-xl block leading-none">{documentData.salesCount}</span>
-                    <span className="text-[10px] uppercase font-black tracking-widest opacity-60">Lượt tài liệu</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600 shadow-sm border border-emerald-100">
-                    <CheckCircle2 className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <span className="text-slate-900 font-black text-xl block leading-none">2026</span>
-                    <span className="text-[10px] uppercase font-black tracking-widest opacity-60">Cập nhật THPT</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 ml-auto">
-                  <span className="px-6 py-2 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-100">
-                    {documentData.category}
-                  </span>
-                </div>
-              </div>
-
-              <div className="prose prose-slate max-w-none">
-                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6">Mô tả chi tiết</h3>
-                <p className="text-slate-700 leading-[1.8] whitespace-pre-line text-lg font-medium">
-                  {documentData.description}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Sidebar */}
-          <div className="lg:col-span-4 space-y-6">
-            <div className="bg-white p-8 rounded-[2.5rem] sticky top-32 space-y-8 border border-white shadow-[0_20px_50px_rgba(0,0,0,0.06)] overflow-hidden relative">
-              <div className="space-y-2">
-                <span className="text-[#6B7280] text-[10px] font-black uppercase tracking-[0.2em]">Giá tài liệu</span>
-                <div className="flex items-baseline gap-3">
-                  <span className="text-5xl font-black text-indigo-600 tracking-tighter">{documentData.price.toLocaleString()}đ</span>
-                  <span className="text-slate-300 line-through text-lg font-bold">{(documentData.price * 1.5).toLocaleString()}đ</span>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {hasPurchased ? (
-                  <button 
-                    onClick={handleDownload}
-                    disabled={downloading}
-                    className="w-full py-5 bg-emerald-600 hover:bg-slate-900 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 shadow-xl shadow-emerald-600/20"
-                  >
-                    {downloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                    Tải file gốc (.pdf)
-                  </button>
-                ) : (
-                  <div className="space-y-4">
-                    {requestStatus === 'pending' ? (
-                      <div className="p-6 bg-indigo-50/50 border border-indigo-100 rounded-[2rem] text-center space-y-4 shadow-inner">
-                        <Clock className="w-10 h-10 text-indigo-600 mx-auto animate-spin-pulse" />
-                        <div>
-                          <p className="text-slate-900 font-black text-sm uppercase tracking-widest">Đang chờ phê duyệt</p>
-                          <p className="text-[10px] text-[#6B7280] font-medium mt-1 leading-relaxed">Yêu cầu của bạn đang được Admin kiểm tra.</p>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pt-6 border-t border-slate-100 w-full mb-6">
+                      <div className="flex flex-col items-center sm:items-start gap-1 shrink-0">
+                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Giá sở hữu</span>
+                        <div className="text-3xl font-black text-rose-600 tracking-tighter">
+                          {documentData.price === 0 ? 'MIỄN PHÍ' : `${documentData.price.toLocaleString()} đ`}
                         </div>
-                        <button 
-                          onClick={() => window.open('https://docs.google.com/forms/d/e/1FAIpQLSeu4HsdHzBD_9dWKcvEoPYW6aN8lcNC07OL9GfNPSkdyxmqEw/viewform?usp=sf_link', '_blank')}
-                          className="text-[10px] text-indigo-600 font-black hover:underline uppercase tracking-widest"
-                        >
-                          Mở lại Form thanh toán
-                        </button>
                       </div>
-                    ) : (requestStatus === 'rejected' || processingRequest) ? (
-                      <div className="p-6 bg-red-50/50 border border-red-100 rounded-[2rem] text-center space-y-3">
-                        <AlertCircle className={`w-10 h-10 ${processingRequest ? 'text-indigo-500 animate-spin' : 'text-red-500'} mx-auto`} />
-                        <p className={`${processingRequest ? 'text-indigo-900' : 'text-red-900'} font-black text-sm uppercase tracking-widest`}>
-                          {processingRequest ? 'Đang gửi yêu cầu...' : 'Giao dịch bị từ chối'}
-                        </p>
-                        <p className="text-[10px] text-slate-500 font-medium font-bold">
-                          {processingRequest ? 'Vui lòng chờ trong giây lát. Hệ thống đang ghi nhận yêu cầu mới của bạn.' : 'Yêu cầu trước đó chưa thành công. Vui lòng kiểm tra lại thông tin và gửi lại yêu cầu mới.'}
-                        </p>
-                        {!processingRequest && (
+                      
+                      <div className="flex flex-col gap-3 w-full sm:w-[240px] shrink-0">
+                        {/* Preview Button */}
+                        {(documentData.previewUrl) && (
                           <button 
-                            onClick={handlePurchase} 
-                            className="w-full py-4 bg-red-600 hover:bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest mt-2 transition-all shadow-lg shadow-red-600/20 active:scale-95"
+                            onClick={() => window.open(documentData.previewUrl, '_blank')}
+                            className="w-full px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-black text-[11px] uppercase tracking-widest transition-all shadow-sm active:scale-95"
                           >
-                            Gửi lại yêu cầu mua tài liệu
+                            Đọc thử tài liệu
+                          </button>
+                        )}
+                        
+                        {/* Action Button */}
+                        {(hasPurchased || documentData.price === 0 || (documentData.requiresManualAccess && (requestStatus === 'pending' || requestStatus === 'approved'))) ? (
+                          <button 
+                            onClick={handleDownload}
+                            disabled={downloading}
+                            className="w-full px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-[12px] uppercase tracking-widest transition-all shadow-lg shadow-emerald-200 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                          >
+                            {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : (documentData.requiresManualAccess ? 'Vào tài liệu gốc' : 'Tải về máy (.pdf)')}
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={handlePurchase}
+                            disabled={processingRequest || requestStatus === 'pending'}
+                            className="w-full px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[12px] uppercase tracking-widest transition-all shadow-lg shadow-indigo-200 active:scale-95 disabled:opacity-50"
+                          >
+                            {processingRequest ? <Loader2 className="w-4 h-4 animate-spin" /> : (requestStatus === 'pending' ? 'ĐANG CHỜ DUYỆT THANH TOÁN' : 'THANH TOÁN & SỞ HỮU NGAY')}
                           </button>
                         )}
                       </div>
-                    ) : (
-                      <div className="space-y-6">
-                        <button 
-                          onClick={handlePurchase}
-                          disabled={processingRequest}
-                          className="w-full py-5 bg-indigo-600 hover:bg-slate-900 text-white rounded-2xl font-black text-[11px] uppercase tracking-[0.25em] transition-all shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
-                        >
-                          {processingRequest ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                          ) : (
-                            <CreditCard className="w-5 h-5" />
-                          )}
-                          Thanh toán & Gửi yêu cầu
-                        </button>
+                    </div>
+
+                    {/* Integrated Notification Banner */}
+                    {((documentData.requiresManualAccess || documentData.price !== 0) && (requestStatus === 'pending' || requestStatus === 'approved')) && (
+                      <div className={`p-4 sm:p-5 rounded-[1.25rem] w-full border transition-all animate-in fade-in slide-in-from-bottom-4 duration-700 flex flex-col sm:flex-row items-center justify-center sm:justify-between gap-4 ${requestStatus === 'approved' ? 'bg-emerald-50/40 border-emerald-100' : 'bg-indigo-50/40 border-indigo-100'}`}>
+                        <div className="flex flex-col items-center sm:items-start gap-1 text-center sm:text-left">
+                          <div className={`font-black text-[11px] sm:text-[13px] uppercase tracking-wider flex items-center gap-2 ${requestStatus === 'approved' ? 'text-emerald-600' : 'text-indigo-500'}`}>
+                            {requestStatus === 'approved' ? <Check className="w-4 h-4" /> : <div className="w-3.5 h-3.5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />}
+                            {requestStatus === 'approved' ? 'ADMIN ĐÃ DUYỆT!' : 'ĐÃ ĐĂNG KÝ!'}
+                          </div>
+                          <div className={`text-[9px] sm:text-[11px] uppercase font-black tracking-tight leading-relaxed ${requestStatus === 'approved' ? 'text-emerald-800' : 'text-indigo-600/80'}`}>
+                            {requestStatus === 'approved'
+                              ? (documentData.requiresManualAccess
+                                  ? 'NHẤN NÚT "VÀO TÀI LIỆU GỐC" ĐỂ YÊU CẦU QUYỀN TRUY CẬP TỪ ADMIN.'
+                                  : 'NHẤN NÚT "TẢI VỀ MÁY" ĐỂ HỌC NGAY!')
+                              : (documentData.requiresManualAccess
+                                  ? 'NHẤN NÚT "VÀO TÀI LIỆU GỐC" ĐỂ ADMIN DUYỆT TRUY CẬP.'
+                                  : 'VUI LÒNG CHỜ ADMIN DUYỆT THANH TOÁN ĐỂ LẤY FILE.')}
+                          </div>
+                        </div>
+
+                        <div className="hidden sm:block w-px h-10 bg-slate-200/60" />
+                        <div className="sm:hidden w-full h-px bg-slate-200/60 max-w-[140px]" />
+
+                        <div className="flex flex-col items-center sm:items-end gap-1">
+                          <span className="text-[8px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">HỖ TRỢ ZALO</span>
+                          <button 
+                            onClick={() => handleCopyToClipboard('0386281920')}
+                            className={`flex flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-white transition-all cursor-pointer shadow-sm active:scale-95 group ${requestStatus === 'approved' ? 'border-emerald-100 text-emerald-600' : 'border-indigo-100 text-indigo-600'}`}
+                          >
+                             <span className="text-[12px] font-black tracking-tight">0386281920</span>
+                             {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5 group-hover:scale-110 transition-transform opacity-70" />}
+                          </button>
+                        </div>
                       </div>
                     )}
-                    <div className="p-6 bg-[#fdfaf3] border border-amber-100 rounded-[2rem]">
-                      <p className="text-[10px] text-amber-600 leading-relaxed uppercase tracking-[0.25em] font-black mb-4 flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                        Quy trình mua hàng
-                      </p>
-                      <p className="text-[10px] text-slate-600 leading-[2] font-medium">
-                        1. Nhấn <span className="text-indigo-600 font-black">"Thanh toán & Gửi yêu cầu"</span> để mở Form đăng ký.<br/>
-                        2. Điền thông tin và thực hiện chuyển khoản theo hướng dẫn trong Form.<br/>
-                        3. Chờ Admin phê duyệt tài liệu (thông thường từ 15-30 phút).<br/>
-                        4. Sau khi duyệt, bạn có thể tải file ngay tại đây hoặc trong mục "Tài liệu của tôi".
-                      </p>
-                    </div>
                   </div>
-                )}
-                <p className="text-[9px] text-center text-[#6B7280]/60 uppercase tracking-[0.25em] leading-loose font-black pt-4">
-                  Cam kết bảo mật & Quyền lợi trọn đời
-                </p>
-              </div>
-
-              <div className="pt-8 border-t border-slate-50 space-y-5">
-                <div className="flex items-center gap-4 text-[10px] font-black text-[#6B7280] uppercase tracking-widest">
-                  <div className="w-6 h-6 rounded-lg bg-emerald-50 flex items-center justify-center">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  </div>
-                  <span>Cập nhật mới nhất: 2026</span>
-                </div>
-                <div className="flex items-center gap-4 text-[10px] font-black text-[#6B7280] uppercase tracking-widest">
-                  <div className="w-6 h-6 rounded-lg bg-emerald-50 flex items-center justify-center">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  </div>
-                  <span>Format: PDF / High Quality</span>
-                </div>
-                <div className="flex items-center gap-4 text-[10px] font-black text-[#6B7280] uppercase tracking-widest">
-                  <div className="w-6 h-6 rounded-lg bg-emerald-50 flex items-center justify-center">
-                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                  </div>
-                  <span>Bảo hành nội dung trọn gói</span>
                 </div>
               </div>
 
-              <div className="flex gap-4 pt-4">
-                <button 
-                  onClick={handleShare}
-                  className="flex-1 py-4 px-6 bg-slate-50 border border-slate-200 rounded-[1.25rem] text-[10px] font-black text-[#6B7280] flex items-center justify-center gap-2 hover:bg-indigo-600 hover:text-white transition-all uppercase tracking-widest shadow-sm"
-                >
-                  <Share2 className="w-4 h-4" /> Chia sẻ tài liệu
-                </button>
-              </div>
-              
-              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full blur-3xl opacity-50 -z-10" />
-            </div>
-
-          </div>
-          {/* Related Documents */}
-          {relatedDocs.length > 0 && (
-            <div className="lg:col-span-12 mt-20">
-              <div className="flex items-center justify-between mb-10">
-                <div>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Tài liệu liên quan</h2>
-                  <p className="text-[#6B7280] text-sm mt-1 font-medium">Khám phá thêm các tài liệu thuộc chuyên mục {documentData.category}.</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-                {relatedDocs.map((relatedDoc) => (
-                  <DocumentCard key={relatedDoc.id} document={relatedDoc} />
+              {/* Meta Bar */}
+              <div className="px-5 py-4 bg-slate-50 border-t border-slate-100 grid grid-cols-3 gap-2">
+                {[
+                  { icon: User, label: "Tác giả", value: "Admin", color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-100" },
+                  { icon: Folder, label: "Thể loại", value: documentData.category || "Tài liệu", color: "text-rose-600", bg: "bg-rose-50", border: "border-rose-100" },
+                  { icon: CheckCircle2, label: "Trạng thái", value: "Phát hành", color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-100" }
+                ].map((item, i) => (
+                  <div key={i} className={`flex flex-col items-center justify-center p-2 rounded-xl border ${item.bg} ${item.border}`}>
+                    <item.icon className={`w-4 h-4 ${item.color} mb-1.5`} />
+                    <span className="text-[8px] font-black uppercase tracking-tight text-slate-400">{item.label}</span>
+                    <span className="text-[10px] font-black text-slate-900 uppercase">{item.value}</span>
+                  </div>
                 ))}
               </div>
             </div>
+
+            {/* Related Documents - Moved below main info */}
+            {relatedDocs.length > 0 && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+                    <span className="w-8 h-1 bg-indigo-600 rounded-full" />
+                    TÀI LIỆU CÙNG CHỦ ĐỀ
+                  </h2>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-2 ml-11">
+                    CÁC TÀI LIỆU CHỌN LỌC KHÁC THUỘC CHUYÊN MỤC {documentData.category}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {relatedDocs.map(relatedDoc => (
+                    <DocumentCard key={relatedDoc.id} document={relatedDoc} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Sidebar */}
+          <div className="hidden lg:block lg:col-span-4">
+            <div className="sticky top-24 space-y-5">
+              {renderPurchaseCard()}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile Sticky Action Bar */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-100 shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.1)] z-50 flex items-center justify-between gap-4">
+        <div className="flex flex-col">
+           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Giá sở hữu</span>
+           <span className="text-xl font-black text-rose-600 tracking-tighter line-clamp-1">
+             {documentData.price === 0 ? 'MIỄN PHÍ' : `${documentData.price.toLocaleString()} đ`}
+           </span>
+        </div>
+        <div className="flex-1 max-w-[200px]">
+          {(hasPurchased || documentData.price === 0 || (documentData.requiresManualAccess && (requestStatus === 'pending' || requestStatus === 'approved'))) ? (
+            <button 
+              onClick={handleDownload}
+              disabled={downloading}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-[11px] uppercase tracking-widest transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : (documentData.requiresManualAccess ? 'Vào tài liệu gốc' : 'Tải về (.pdf)')}
+            </button>
+          ) : (
+            <button 
+              onClick={handlePurchase}
+              disabled={processingRequest || requestStatus === 'pending'}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[11px] uppercase tracking-widest transition-all shadow-md active:scale-95 disabled:opacity-50"
+            >
+              {processingRequest ? <Loader2 className="w-4 h-4 animate-spin" /> : (requestStatus === 'pending' ? 'ĐANG CHỜ DUYỆT' : 'THANH TOÁN LẤY FILE')}
+            </button>
           )}
         </div>
       </div>

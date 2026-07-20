@@ -1,33 +1,42 @@
 import React, { useState, useEffect } from 'react';
-import { auth } from '../lib/firebase';
-import { getProfile, getDocuments } from '../services/marketplaceService';
-import { UserProfile, Document } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { getDocuments, getCourses } from '../services/marketplaceService';
+import { Document, Course } from '../types';
 import { DocumentCard } from '../components/home/DocumentCard';
-import { User, Package, ShieldCheck, Loader2 } from 'lucide-react';
+import { CourseCard } from '../components/home/CourseCard';
+import { User, Package, ShieldCheck, Loader2, Sparkles } from 'lucide-react';
 
 export const Profile: React.FC = () => {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const { user: profile, loading: authLoading } = useAuth();
   const [purchasedDocs, setPurchasedDocs] = useState<Document[]>([]);
+  const [purchasedCourses, setPurchasedCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchProfile = async () => {
-      const user = auth.currentUser;
-      if (user) {
-        const data = await getProfile(user.uid);
-        if (data) {
-          setProfile(data);
-          const allDocs = await getDocuments();
-          const purchased = allDocs.filter(d => data.purchasedDocs.includes(d.id));
-          setPurchasedDocs(purchased);
+    window.scrollTo(0, 0);
+    const fetchData = async () => {
+      if (profile) {
+        try {
+          const [allDocs, allCourses] = await Promise.all([
+            getDocuments(),
+            getCourses()
+          ]);
+          
+          const purchasedD = allDocs.filter(d => profile.purchasedDocs?.includes(d.id));
+          const purchasedC = allCourses.filter(c => profile.purchasedCourses?.includes(c.id));
+          
+          setPurchasedDocs(purchasedD);
+          setPurchasedCourses(purchasedC);
+        } catch (error) {
+          console.error("Profile data fetch error:", error);
         }
       }
       setLoading(false);
     };
-    fetchProfile();
-  }, []);
+    fetchData();
+  }, [profile]);
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-[#F5F7FF] pt-32 flex items-center justify-center">
         <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
@@ -48,54 +57,77 @@ export const Profile: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
           {/* Sidebar Info */}
-          <div className="lg:col-span-4 space-y-6">
-            <div className="bg-gradient-to-b from-white to-[#f7f8ff] p-10 rounded-[3rem] text-center shadow-[0_10px_30px_rgba(0,0,0,0.04)] border border-white relative overflow-hidden group">
-              <div className="w-24 h-24 rounded-[2rem] bg-indigo-50 border-2 border-white flex items-center justify-center mx-auto mb-6 shadow-xl shadow-indigo-600/5 group-hover:scale-110 group-hover:rotate-6 transition-all duration-500">
-                <User className="w-12 h-12 text-indigo-600" />
+          <div className="lg:col-span-4 space-y-4">
+            <div className="bg-gradient-to-b from-white to-[#f7f8ff] p-6 lg:p-8 rounded-[2rem] text-center shadow-lg border border-white relative overflow-hidden group">
+              <div className="w-16 h-16 rounded-2xl bg-indigo-50 border-2 border-white flex items-center justify-center mx-auto mb-3 shadow-md group-hover:scale-105 transition-all overflow-hidden">
+                {profile.photoURL ? (
+                  <img src={profile.photoURL} alt={profile.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <User className="w-8 h-8 text-indigo-600" />
+                )}
               </div>
-              <h2 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">{profile.displayName}</h2>
-              <p className="text-[#6B7280] font-bold text-sm">{profile.email}</p>
+              <h2 className="text-xl lg:text-2xl font-black text-slate-900 mb-1 tracking-tight">{profile.username || profile.displayName || 'Học sinh'}</h2>
+              <p className="text-[#6B7280] font-bold text-xs lg:text-sm">{profile.isAdmin ? 'Quản trị viên' : 'Thành viên'}</p>
             </div>
 
-            {profile.email === 'tailieuhay53@gmail.com' && (
-              <div className="p-8 rounded-[2.5rem] bg-[#f3f4ff] border border-[#dfe3ff] flex items-center gap-5 group hover:shadow-xl hover:shadow-indigo-600/5 transition-all">
-                <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center text-indigo-600 shadow-sm group-hover:scale-110 transition-transform">
-                  <ShieldCheck className="w-8 h-8" />
+            {profile.isAdmin && (
+              <div className="p-5 lg:p-6 rounded-[2rem] bg-[#f3f4ff] border border-[#dfe3ff] flex items-center gap-4 group hover:shadow-md transition-all">
+                <div className="w-10 h-10 lg:w-12 lg:h-12 rounded-xl bg-white flex items-center justify-center text-indigo-600 shadow-sm group-hover:scale-105 transition-transform shrink-0">
+                  <ShieldCheck className="w-5 h-5 lg:w-6 lg:h-6" />
                 </div>
-                <div className="text-sm">
-                  <div className="font-black text-slate-900 uppercase tracking-widest text-xs mb-1">Quản trị viên</div>
-                  <div className="text-[#6B7280] font-medium">Bạn có quyền truy cập hệ thống admin.</div>
+                <div className="text-left">
+                  <div className="font-black text-slate-900 uppercase tracking-widest text-[10px] lg:text-xs mb-0.5">Quản trị viên</div>
+                  <div className="text-[#6B7280] font-medium text-xs lg:text-sm leading-snug">Bạn có quyền truy cập hệ thống admin.</div>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Purchased Documents */}
-          <div className="lg:col-span-8">
-            <div className="flex items-center gap-4 mb-10">
-              <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center shadow-sm border border-slate-100">
-                <Package className="w-6 h-6 text-indigo-600" />
+          {/* Purchased Items */}
+          <div className="lg:col-span-8 space-y-12">
+            {/* Courses Section */}
+            <div>
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center shadow-sm border border-slate-100">
+                  <Sparkles className="w-6 h-6 text-emerald-600" />
+                </div>
+                <h2 className="text-3xl font-black text-slate-900 tracking-tight">Khóa học của tôi</h2>
               </div>
-              <h2 className="text-3xl font-black text-slate-900 tracking-tight">Tài liệu đã mua</h2>
+
+              {purchasedCourses.length > 0 ? (
+                <div className="grid grid-cols-1 gap-6">
+                  {purchasedCourses.map(course => (
+                    <CourseCard key={course.id} course={course} />
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-white/50 backdrop-blur-md p-10 rounded-[2.5rem] text-center border-2 border-dashed border-slate-200">
+                   <p className="text-slate-400 font-bold text-sm uppercase tracking-widest">Chưa có khóa học nào</p>
+                </div>
+              )}
             </div>
 
-            {purchasedDocs.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {purchasedDocs.map(doc => (
-                  <DocumentCard key={doc.id} document={doc} />
-                ))}
-              </div>
-            ) : (
-              <div className="glass p-20 rounded-[3rem] text-center border-2 border-dashed border-slate-200">
-                <div className="bg-slate-50 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner">
-                  <Package className="w-10 h-10 text-slate-200" />
+            {/* Documents Section */}
+            <div>
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center shadow-sm border border-slate-100">
+                  <Package className="w-6 h-6 text-indigo-600" />
                 </div>
-                <h3 className="text-slate-900 font-black text-2xl mb-4 tracking-tight">Chưa có tài liệu nào</h3>
-                <p className="text-[#6B7280] text-sm max-w-sm mx-auto font-medium leading-relaxed">
-                  Bạn chưa sở hữu tài liệu nào. Hãy khám phá kho tài liệu và thực hiện thanh toán để bắt đầu học tập.
-                </p>
+                <h2 className="text-3xl font-black text-slate-900 tracking-tight">Tài liệu đã mua</h2>
               </div>
-            )}
+
+              {purchasedDocs.length > 0 ? (
+                <div className="grid grid-cols-1 gap-6">
+                  {purchasedDocs.map(doc => (
+                    <DocumentCard key={doc.id} document={doc} />
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-white/50 backdrop-blur-md p-10 rounded-[2.5rem] text-center border-2 border-dashed border-slate-200">
+                   <p className="text-slate-400 font-bold text-sm uppercase tracking-widest">Chưa có tài liệu nào</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

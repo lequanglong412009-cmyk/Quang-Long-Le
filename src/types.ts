@@ -12,16 +12,22 @@ export interface Document {
   thumbnailUrl: string;
   salesCount: number;
   status: 'Hot' | 'Bestseller' | 'New' | 'Regular';
+  totalRevenue?: number;
   createdAt: Timestamp | Date | number;
+  updatedAt?: Timestamp | Date | number;
+  requiresManualAccess?: boolean; // New field
+  originalLink?: string; // Private link for Admin reference (not public)
 }
 
 export interface UserProfile {
   uid: string;
   email: string;
   displayName: string;
+  username: string;
   photoURL?: string;
   isAdmin: boolean;
   purchasedDocs: string[]; // List of document IDs
+  purchasedCourses?: string[]; // List of course IDs
   createdAt: Timestamp | Date | number;
 }
 
@@ -39,8 +45,48 @@ export interface AccessRequest {
   userEmail: string;
   documentId: string;
   documentTitle: string;
+  fullName?: string;
+  phoneNumber?: string;
+  zaloNumber?: string;
+  transactionCode?: string;
+  message?: string;
   status: 'pending' | 'approved' | 'rejected';
   requestedAt: Timestamp;
+}
+
+export interface Course {
+  id: string;
+  title: string;
+  description: string;
+  instructor: string;
+  price: number;
+  thumbnailUrl: string;
+  driveThumbnailUrl?: string;
+  previewUrl?: string;
+  link?: string; // The course link (Drive/YouTube) accessible after approval
+  category: string;
+  status: 'Hot' | 'New' | 'Upcoming';
+  studentsCount: number;
+  totalRevenue?: number;
+  createdAt: Timestamp | Date | number;
+  updatedAt?: Timestamp | Date | number;
+  requiresManualAccess?: boolean; // New field
+  originalLink?: string; // Private link for Admin reference (not public)
+}
+
+export interface CourseRegistration {
+  id: string;
+  userId: string;
+  userEmail: string;
+  courseId: string;
+  courseTitle: string;
+  fullName?: string;
+  phoneNumber?: string;
+  zaloNumber?: string;
+  transactionCode?: string;
+  message?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  registeredAt: Timestamp;
 }
 
 export type Category = string; // Using string for flexible "Grade | Subject" format
