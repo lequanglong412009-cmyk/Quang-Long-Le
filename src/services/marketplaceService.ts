@@ -124,6 +124,20 @@ import {
 } from 'firebase/auth';
 
 export async function signInWithGoogle() {
+  const ua = navigator.userAgent || navigator.vendor || (window as any).opera;
+  const isInAppBrowser = (ua.indexOf("FBAN") > -1) || 
+                         (ua.indexOf("FBAV") > -1) || 
+                         (ua.indexOf("Instagram") > -1) || 
+                         (ua.indexOf("Zalo") > -1) ||
+                         (ua.indexOf("Line") > -1) ||
+                         (ua.indexOf("FB_IAB") > -1) ||
+                         (ua.indexOf("Messenger") > -1);
+  
+  if (isInAppBrowser) {
+    alert("⚠️ Lỗi trình duyệt Zalo/Facebook!\n\nVui lòng nhấn vào biểu tượng 3 chấm (⋮) ở góc phải màn hình và chọn 'Mở bằng trình duyệt' (Chrome/Safari) để có thể đăng nhập.");
+    throw new Error("In-app browser detected.");
+  }
+
   const provider = new GoogleAuthProvider();
   try {
     const userCredential = await signInWithPopup(auth, provider);
@@ -173,7 +187,9 @@ export async function signInWithGoogle() {
     return profile;
   } catch (error) {
     const err = error as { code?: string; message?: string };
-    if (err && err.code === 'permission-denied') {
+    if (err && (err.code === 'auth/missing-initial-state' || err.code === 'auth/web-storage-unsupported' || (err.message && err.message.includes('missing initial state')))) {
+      alert("⚠️ Lỗi trình duyệt Zalo/Facebook!\n\nVui lòng nhấn vào biểu tượng 3 chấm (⋮) ở góc phải màn hình và chọn 'Mở bằng trình duyệt' (Chrome/Safari) để có thể đăng nhập.");
+    } else if (err && err.code === 'permission-denied') {
       console.error('Login error:', err.message, 'operation:', (window as Window & { __lastDbOp?: string }).__lastDbOp);
     } else {
       console.error('Login error:', error);

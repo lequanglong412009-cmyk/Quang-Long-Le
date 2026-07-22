@@ -8,6 +8,7 @@ import { Document, Course } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, BookOpen, ArrowRight, X, ShieldCheck, Zap } from 'lucide-react';
 import Fuse from 'fuse.js';
+import { sortItemsByPriorityAndDate } from '../lib/utils';
 
 const GRADES = ['Tất cả', 'Lớp 10', 'Lớp 11', 'Lớp 12'];
 const SUBJECTS = ['Tất cả', 'Toán', 'Lí', 'Hóa', 'Sinh', 'Anh', 'Sử', 'Địa', 'Tin', 'Văn'];
@@ -124,14 +125,6 @@ export const Home: React.FC = () => {
     const filterItems = () => {
       setLoading(true);
       
-      const sortNewTop = <T extends { status?: string }>(items: T[]): T[] => {
-        return [...items].sort((a, b) => {
-          if (a.status === 'New' && b.status !== 'New') return -1;
-          if (a.status !== 'New' && b.status === 'New') return 1;
-          return 0;
-        });
-      };
-      
       if (viewType === 'docs') {
         let filtered = allDocs;
         if (selectedGrade !== 'Tất cả') {
@@ -151,7 +144,7 @@ export const Home: React.FC = () => {
 
         if (searchQuery.trim()) {
           const results = fuseDocs.search(searchQuery).map(r => r.item);
-          setDocs(sortNewTop(results.filter(item => {
+          setDocs(sortItemsByPriorityAndDate(results.filter(item => {
              if (!item.category) return false;
              const parts = item.category.split(' | ');
              const gradeMatch = selectedGrade === 'Tất cả' || parts[0] === selectedGrade || item.category === selectedGrade;
@@ -159,7 +152,7 @@ export const Home: React.FC = () => {
              return gradeMatch && subjectMatch;
           })));
         } else {
-          setDocs(sortNewTop(filtered));
+          setDocs(sortItemsByPriorityAndDate(filtered));
         }
       } else {
         let filtered = allCourses;
@@ -180,7 +173,7 @@ export const Home: React.FC = () => {
 
         if (searchQuery.trim()) {
           const results = fuseCourses.search(searchQuery).map(r => r.item);
-          setCourses(sortNewTop(results.filter(item => {
+          setCourses(sortItemsByPriorityAndDate(results.filter(item => {
              if (!item.category) return false;
              const parts = item.category.split(' | ');
              const gradeMatch = selectedGrade === 'Tất cả' || parts[0] === selectedGrade || item.category === selectedGrade;
@@ -188,7 +181,7 @@ export const Home: React.FC = () => {
              return gradeMatch && subjectMatch;
           })));
         } else {
-          setCourses(sortNewTop(filtered));
+          setCourses(sortItemsByPriorityAndDate(filtered));
         }
       }
       

@@ -42,7 +42,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async () => {
-    await signInWithGoogle();
+    try {
+      await signInWithGoogle();
+    } catch (error: any) {
+      console.error("Login failed:", error);
+      if (error && error.message && error.message.includes("In-app browser detected")) {
+        // already alerted in signInWithGoogle
+      } else if (error && error.code === 'auth/missing-initial-state') {
+         alert("⚠️ Lỗi trình duyệt: Không thể đăng nhập bằng trình duyệt Zalo/Facebook.\n\nVui lòng nhấn vào biểu tượng 3 chấm (⋮) ở góc phải màn hình và chọn 'Mở bằng trình duyệt' (Chrome/Safari) để có thể đăng nhập.");
+      } else {
+         alert("Đăng nhập thất bại. Vui lòng mở trang web bằng trình duyệt Safari hoặc Chrome và thử lại.");
+      }
+    }
   };
 
   const logout = async () => {

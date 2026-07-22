@@ -22,7 +22,7 @@ import { DocumentCard } from '../components/home/DocumentCard';
 export const DocumentDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, login } = useAuth();
   const [documentData, setDocumentData] = useState<Document | null>(null);
   const [hasPurchased, setHasPurchased] = useState(false);
   const [requestStatus, setRequestStatus] = useState<string | null>(null);
@@ -96,7 +96,7 @@ export const DocumentDetail: React.FC = () => {
 
   const handlePurchase = async () => {
     if (!user) {
-      navigate('/profile');
+      await login();
       return;
     }
     if (!documentData) return;
@@ -151,8 +151,7 @@ export const DocumentDetail: React.FC = () => {
     if (!id) return;
 
     if (!user) {
-      alert('Vui lòng đăng nhập để tải tài liệu.');
-      navigate('/profile');
+      await login();
       return;
     }
     
@@ -471,28 +470,27 @@ export const DocumentDetail: React.FC = () => {
                   </div>
 
                   <div className="flex-1 flex flex-col space-y-4 pt-1 w-full">
-                    <div className="space-y-1.5 text-center sm:text-left">
-                      <span className="text-[9px] font-black text-indigo-600 uppercase tracking-[0.2em] bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
-                        OFFICIAL DOCUMENT
-                      </span>
-                      <h2 className="text-lg md:text-xl font-black text-slate-900 leading-tight uppercase tracking-tight">
+                    <div className="space-y-3 text-center sm:text-left">
+                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50/80 border border-indigo-100/80">
+                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse" />
+                        <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest">
+                          Tài liệu chính thức
+                        </span>
+                      </div>
+                      <h1 className="text-[13px] md:text-[15px] font-black text-[#0066FF] leading-[1.4] uppercase tracking-tight">
                         {documentData.title}
-                      </h2>
-                      <p className="text-xs text-slate-500 font-medium mt-2 leading-relaxed">
-                        {documentData.description}
-                      </p>
-
+                      </h1>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pt-6 border-t border-slate-100 w-full mb-6">
-                      <div className="flex flex-col items-center sm:items-start gap-1 shrink-0">
+                    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pt-4 border-t border-slate-100 w-full mb-4">
+                      <div className="flex flex-col items-center sm:items-start gap-1 shrink-0 pb-1">
                         <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Giá sở hữu</span>
-                        <div className="text-3xl font-black text-rose-600 tracking-tighter">
+                        <div className="text-2xl md:text-3xl font-black text-rose-600 tracking-tighter">
                           {documentData.price === 0 ? 'MIỄN PHÍ' : `${documentData.price.toLocaleString()} đ`}
                         </div>
                       </div>
                       
-                      <div className="flex flex-col gap-3 w-full sm:w-[240px] shrink-0">
+                      <div className="flex flex-col gap-2.5 w-full sm:w-[260px] shrink-0">
                         {/* Preview Button */}
                         {(documentData.previewUrl) && (
                           <button 
@@ -577,6 +575,18 @@ export const DocumentDetail: React.FC = () => {
                 ))}
               </div>
             </div>
+
+            {/* Description Block */}
+            {documentData.description && (
+              <div className="bg-[#FCF9F0] rounded-2xl border border-[#F0EBE1] p-5 md:p-6 shadow-sm">
+                <h3 className="text-[#D97706] font-bold mb-4 text-sm uppercase tracking-wider">
+                  Giới thiệu tài liệu:
+                </h3>
+                <div className="text-[13px] md:text-[14px] text-slate-700 leading-relaxed whitespace-pre-wrap font-medium">
+                  {documentData.description}
+                </div>
+              </div>
+            )}
 
             {/* Related Documents - Moved below main info */}
             {relatedDocs.length > 0 && (

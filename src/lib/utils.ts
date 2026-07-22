@@ -64,3 +64,35 @@ export function getGoogleDriveEmbedUrl(url: string): string {
 export function cn(...classes: (string | undefined | null | boolean)[]) {
   return classes.filter(Boolean).join(' ');
 }
+
+export function getSortWeight(status?: string): number {
+  if (status === 'New') return 4;
+  if (status === 'Hot') return 3;
+  if (status === 'Bestseller') return 2;
+  if (status === 'Upcoming') return 2;
+  return 1;
+}
+
+export function getTimeValue(time: any): number {
+  if (!time) return 0;
+  if (typeof time === 'number') return time;
+  if (time instanceof Date) return time.getTime();
+  if (time.seconds !== undefined) return time.seconds * 1000;
+  return 0;
+}
+
+export function sortItemsByPriorityAndDate<T extends { status?: string, createdAt?: any, updatedAt?: any }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const weightA = getSortWeight(a.status);
+    const weightB = getSortWeight(b.status);
+    
+    if (weightA !== weightB) {
+      return weightB - weightA; // Higher weight first
+    }
+    
+    const timeA = Math.max(getTimeValue(a.updatedAt), getTimeValue(a.createdAt));
+    const timeB = Math.max(getTimeValue(b.updatedAt), getTimeValue(b.createdAt));
+    
+    return timeB - timeA; // Newer time first
+  });
+}

@@ -65,7 +65,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 export const CourseDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, login } = useAuth();
   const [course, setCourse] = useState<Course | null>(null);
   const [relatedCourses, setRelatedCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,9 +143,9 @@ export const CourseDetail: React.FC = () => {
     }
   }, [id, user]);
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     if (!user) {
-      navigate('/login', { state: { from: `/course/${id}` } });
+      await login();
       return;
     }
     setIsRegModalOpen(true);
@@ -383,32 +383,32 @@ export const CourseDetail: React.FC = () => {
                   </div>
 
                   <div className="flex-1 flex flex-col pt-1 w-full relative">
-                    <div className="space-y-1.5 text-center sm:text-left mb-6">
+                    <div className="space-y-3 text-center sm:text-left mb-6">
                       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-2">
-                        <span className="text-[9px] font-black text-indigo-600 uppercase tracking-[0.2em] bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100 self-center sm:self-start">
-                          OFFICIAL COURSE
-                        </span>
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-50/80 border border-rose-100/80 self-center sm:self-start">
+                          <div className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />
+                          <span className="text-[10px] font-bold text-rose-700 uppercase tracking-widest">
+                            Khóa học chính thức
+                          </span>
+                        </div>
                         {/* Price moved up for mobile visibility */}
                         <div className="flex flex-col items-center sm:hidden">
                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Giá sở hữu</span>
-                           <div className="text-3xl font-black text-rose-600 tracking-tighter">
+                           <div className="text-2xl font-black text-rose-600 tracking-tighter">
                              {course.price === 0 ? 'MIỄN PHÍ' : `${course.price.toLocaleString()} đ`}
                            </div>
                         </div>
                       </div>
                       
-                      <h2 className="text-xl md:text-2xl font-black text-slate-900 leading-tight uppercase tracking-tight">
+                      <h1 className="text-[13px] md:text-[15px] font-black text-[#0066FF] leading-[1.4] uppercase tracking-tight">
                         {course.title}
-                      </h2>
-                      <p className="text-slate-500 text-[12px] leading-relaxed line-clamp-3 font-medium">
-                        {course.description || `Khóa học ${course.title} được biên soạn chuyên sâu bởi đội ngũ Admin với lộ trình bài bản.`}
-                      </p>
+                      </h1>
                     </div>
 
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pt-6 border-t border-slate-100 w-full mb-6">
-                        <div className="hidden sm:flex flex-col items-start gap-1 shrink-0">
+                      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pt-4 border-t border-slate-100 w-full mb-4">
+                        <div className="hidden sm:flex flex-col items-start gap-1 shrink-0 pb-1">
                           <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Giá sở hữu</span>
-                          <div className="text-3xl font-black text-rose-600 tracking-tighter">
+                          <div className="text-2xl md:text-3xl font-black text-rose-600 tracking-tighter">
                             {course.price === 0 ? 'MIỄN PHÍ' : `${course.price.toLocaleString()} đ`}
                           </div>
                         </div>
@@ -496,6 +496,16 @@ export const CourseDetail: React.FC = () => {
                     <span className="text-[10px] font-black text-slate-900 uppercase">{item.value}</span>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Description Block */}
+            <div className="bg-[#FCF9F0] rounded-2xl border border-[#F0EBE1] p-5 md:p-6 shadow-sm">
+              <h3 className="text-[#D97706] font-bold mb-4 text-sm uppercase tracking-wider">
+                Giới thiệu khóa học:
+              </h3>
+              <div className="text-[13px] md:text-[14px] text-slate-700 leading-relaxed whitespace-pre-wrap font-medium">
+                {course.description || `Khóa học ${course.title} được biên soạn chuyên sâu bởi đội ngũ Admin với lộ trình bài bản.`}
               </div>
             </div>
 

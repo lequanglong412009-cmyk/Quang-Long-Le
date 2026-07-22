@@ -8,12 +8,15 @@ import { Profile } from './pages/Profile';
 import { CourseDetail } from './pages/CourseDetail';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
+import { InAppBrowserBanner } from './components/layout/InAppBrowserBanner';
+
 
 function App() {
   return (
     <AuthProvider>
       <Router>
         <div className="flex flex-col min-h-screen">
+          <InAppBrowserBanner />
           <Navbar />
           <main className="flex-grow">
             <Routes>

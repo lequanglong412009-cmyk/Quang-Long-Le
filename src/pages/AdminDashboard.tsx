@@ -21,7 +21,7 @@ import {
 } from '../services/marketplaceService';
 import { Document, AccessRequest, Course, CourseRegistration } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { getGoogleDriveThumbnail } from '../lib/utils';
+import { getGoogleDriveThumbnail, sortItemsByPriorityAndDate } from '../lib/utils';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { collection, query, where, onSnapshot, getDocs, orderBy, addDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
@@ -117,13 +117,15 @@ export const AdminDashboard: React.FC = () => {
     const docsCol = collection(db, MARKEPLTACE_COLLECTIONS.DOCUMENTS);
     const docsQuery = query(docsCol, orderBy('createdAt', 'desc'));
     unsubscribeDocs = onSnapshot(docsQuery, (snapshot) => {
-      setDocs(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Document)));
+      const fetchedDocs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Document));
+      setDocs(sortItemsByPriorityAndDate(fetchedDocs));
     }, (error) => console.error('Docs Listener Error:', error));
 
     const coursesCol = collection(db, MARKEPLTACE_COLLECTIONS.COURSES);
     const coursesQuery = query(coursesCol, orderBy('createdAt', 'desc'));
     unsubscribeCourses = onSnapshot(coursesQuery, (snapshot) => {
-      setCourses(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Course)));
+      const fetchedCourses = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Course));
+      setCourses(sortItemsByPriorityAndDate(fetchedCourses));
     }, (error) => console.error('Courses Listener Error:', error));
 
     // 2. Real-time listener for requests
@@ -1246,9 +1248,9 @@ export const AdminDashboard: React.FC = () => {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 sm:p-8 rounded-3xl shadow-2xl relative z-10 custom-scrollbar flex flex-col"
+              className="bg-white max-w-2xl w-full max-h-[90vh] overflow-y-auto p-5 sm:p-6 rounded-3xl shadow-2xl relative z-10 custom-scrollbar flex flex-col"
             >
-              <div className="flex items-start justify-between mb-8 pb-4 border-b border-slate-100">
+              <div className="flex items-start justify-between mb-5 pb-4 border-b border-slate-100">
                 <div className="space-y-1">
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-600 rounded-md font-bold text-[10px] uppercase tracking-wider">
                     <Sparkles className="w-3 h-3" />
@@ -1266,27 +1268,27 @@ export const AdminDashboard: React.FC = () => {
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-6 flex-1">
+              <form onSubmit={handleSubmit} className="space-y-3 flex-1">
                 {/* Basic Info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Định danh tài liệu</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Định danh tài liệu</label>
                     <input 
                       required
                       type="text" 
-                      className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all text-sm font-semibold text-slate-900 placeholder:text-slate-400"
+                      className="w-full px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all text-sm font-semibold text-slate-900 placeholder:text-slate-400"
                       placeholder="Nhập tên tài liệu..."
                       value={newDoc.title || ''}
                       onChange={e => setNewDoc({...newDoc, title: e.target.value})}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Giá niêm yết</label>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Giá niêm yết</label>
                     <div className="relative group">
                        <input 
                         required
                         type="number" 
-                        className={`w-full pl-4 pr-16 py-3 rounded-xl border focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 text-sm font-bold transition-all ${
+                        className={`w-full pl-4 pr-16 py-2.5 rounded-xl border focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 text-sm font-bold transition-all ${
                           newDoc.price === 0 ? 'bg-indigo-50 text-indigo-400 border-indigo-100' : 'bg-slate-50 text-slate-900 border-slate-200'
                         }`}
                         value={newDoc.price}
@@ -1295,14 +1297,14 @@ export const AdminDashboard: React.FC = () => {
                           setNewDoc({...newDoc, price: isNaN(val) ? 0 : Math.max(0, val)});
                         }}
                       />
-                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs uppercase">VND</span>
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] uppercase">VND</span>
                     </div>
                     <label 
-                      className="flex items-center gap-2 mt-2 cursor-pointer group/free w-fit"
+                      className="flex items-center gap-2 mt-1.5 cursor-pointer group/free w-fit"
                       onClick={() => setNewDoc({...newDoc, price: newDoc.price === 0 ? 20000 : 0})}
                     >
-                      <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${newDoc.price === 0 ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300 group-hover/free:border-indigo-400'}`}>
-                        {newDoc.price === 0 && <Check className="w-3 h-3 text-white" />}
+                      <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${newDoc.price === 0 ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300 group-hover/free:border-indigo-400'}`}>
+                        {newDoc.price === 0 && <Check className="w-2.5 h-2.5 text-white" />}
                       </div>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 select-none">Tài liệu miễn phí</span>
                     </label>
@@ -1310,49 +1312,49 @@ export const AdminDashboard: React.FC = () => {
                 </div>
 
                 {/* Taxonomy */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Lớp</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Lớp</label>
                     <select 
-                      className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-indigo-500 text-sm font-semibold text-slate-700 outline-none"
+                      className="w-full px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:border-indigo-500 text-sm font-semibold text-slate-700 outline-none"
                       value={selectedGrade}
                       onChange={e => setSelectedGrade(e.target.value)}
                     >
                       {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Môn</label>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Môn</label>
                     <select 
-                      className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-indigo-500 text-sm font-semibold text-slate-700 outline-none"
+                      className="w-full px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:border-indigo-500 text-sm font-semibold text-slate-700 outline-none"
                       value={selectedSubject}
                       onChange={e => setSelectedSubject(e.target.value)}
                     >
                       {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Nhãn</label>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Nhãn</label>
                     <select 
-                      className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-indigo-500 text-sm font-semibold outline-none"
+                      className="w-full px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:border-indigo-500 text-sm font-semibold outline-none"
                       value={newDoc.status}
                       onChange={e => setNewDoc({...newDoc, status: e.target.value as typeof newDoc.status})}
                       style={{ color: newDoc.status === 'Hot' ? '#ef4444' : newDoc.status === 'Bestseller' ? '#f59e0b' : newDoc.status === 'New' ? '#10b981' : '#475569' }}
                     >
-                      <option value="Regular" className="text-slate-600">Regular</option>
+                      <option value="New" className="text-emerald-500">New</option>
                       <option value="Hot" className="text-red-500">Hot</option>
                       <option value="Bestseller" className="text-amber-500">Bestseller</option>
-                      <option value="New" className="text-emerald-500">New</option>
+                      <option value="Regular" className="text-slate-600">Regular</option>
                     </select>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Mô tả nội dung</label>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Mô tả nội dung</label>
                   <textarea 
                     required
-                    rows={3}
-                    className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all text-sm font-medium text-slate-700 custom-scrollbar"
+                    rows={10}
+                    className="w-full px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all text-sm font-medium text-slate-700 custom-scrollbar resize-none"
                     placeholder="Tóm tắt nội dung và điểm nổi bật..."
                     value={newDoc.description || ''}
                     onChange={e => setNewDoc({...newDoc, description: e.target.value})}
@@ -1369,8 +1371,8 @@ export const AdminDashboard: React.FC = () => {
                 </div>
 
                 {/* URLs Section */}
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
                         <Eye className="w-3 h-3" /> Link đọc thử
@@ -1505,8 +1507,8 @@ export const AdminDashboard: React.FC = () => {
         {isAddingCourse && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setIsAddingCourse(false); setEditingCourse(null); }} className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="bg-white max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 sm:p-8 rounded-3xl shadow-2xl relative z-10 custom-scrollbar flex flex-col">
-              <div className="flex items-start justify-between mb-8 pb-4 border-b border-slate-100">
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="bg-white max-w-2xl w-full max-h-[90vh] overflow-y-auto p-5 sm:p-6 rounded-3xl shadow-2xl relative z-10 custom-scrollbar flex flex-col">
+              <div className="flex items-start justify-between mb-5 pb-4 border-b border-slate-100">
                 <div className="space-y-1">
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-md font-bold text-[10px] uppercase tracking-wider">
                     <Sparkles className="w-3 h-3" />
@@ -1517,26 +1519,26 @@ export const AdminDashboard: React.FC = () => {
                 <button onClick={() => { setIsAddingCourse(false); setEditingCourse(null); }} className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:text-slate-900 border border-slate-100 shrink-0 transition-colors"><X className="w-5 h-5" /></button>
               </div>
               
-              <form onSubmit={handleCourseSubmit} className="space-y-6 flex-1">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Tên khóa học</label>
-                    <input required className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all text-sm font-semibold placeholder:text-slate-400" placeholder="Nhập tên khóa học..." value={newCourse.title || ''} onChange={e => setNewCourse({...newCourse, title: e.target.value})} />
+              <form onSubmit={handleCourseSubmit} className="space-y-3 flex-1">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Tên khóa học</label>
+                    <input required className="w-full px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all text-sm font-semibold placeholder:text-slate-400" placeholder="Nhập tên khóa học..." value={newCourse.title || ''} onChange={e => setNewCourse({...newCourse, title: e.target.value})} />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Giảng viên / Trung tâm</label>
-                    <input required className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all text-sm font-semibold placeholder:text-slate-400" placeholder="Tên giảng viên..." value={newCourse.instructor || ''} onChange={e => setNewCourse({...newCourse, instructor: e.target.value})} />
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Giảng viên / Trung tâm</label>
+                    <input required className="w-full px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all text-sm font-semibold placeholder:text-slate-400" placeholder="Tên giảng viên..." value={newCourse.instructor || ''} onChange={e => setNewCourse({...newCourse, instructor: e.target.value})} />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                   <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Học phí</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Học phí</label>
                     <div className="relative group">
                       <input 
                         required
                         type="number" 
-                        className={`w-full pl-4 pr-16 py-3 rounded-xl border focus:ring-4 text-sm font-bold transition-all ${
+                        className={`w-full pl-4 pr-16 py-2.5 rounded-xl border focus:ring-4 text-sm font-bold transition-all ${
                           newCourse.price === 0 ? 'bg-emerald-50 text-emerald-600 border-emerald-100 focus:border-emerald-500 focus:ring-emerald-500/10' : 'bg-slate-50 text-slate-900 border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/10'
                         }`}
                         value={newCourse.price} 
@@ -1545,21 +1547,21 @@ export const AdminDashboard: React.FC = () => {
                           setNewCourse({...newCourse, price: isNaN(val) ? 0 : Math.max(0, val)});
                         }}
                       />
-                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs uppercase">VND</span>
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] uppercase">VND</span>
                     </div>
                     <label 
-                      className="flex items-center gap-2 mt-2 cursor-pointer group/free w-fit"
+                      className="flex items-center gap-2 mt-1.5 cursor-pointer group/free w-fit"
                       onClick={() => setNewCourse({...newCourse, price: newCourse.price === 0 ? 199000 : 0})}
                     >
-                      <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${newCourse.price === 0 ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-slate-300 group-hover/free:border-emerald-400'}`}>
-                        {newCourse.price === 0 && <Check className="w-3 h-3 text-white" />}
+                      <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${newCourse.price === 0 ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-slate-300 group-hover/free:border-emerald-400'}`}>
+                        {newCourse.price === 0 && <Check className="w-2.5 h-2.5 text-white" />}
                       </div>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 select-none">Khóa học miễn phí</span>
                     </label>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Trạng thái</label>
-                    <select className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 text-sm font-semibold outline-none" value={newCourse.status} onChange={e => setNewCourse({...newCourse, status: e.target.value as typeof newCourse.status})}>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Trạng thái</label>
+                    <select className="w-full px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 text-sm font-semibold outline-none" value={newCourse.status} onChange={e => setNewCourse({...newCourse, status: e.target.value as typeof newCourse.status})}>
                       <option value="New" className="text-emerald-500">New</option>
                       <option value="Hot" className="text-red-500">Hot</option>
                       <option value="Upcoming" className="text-blue-500">Upcoming</option>
@@ -1567,23 +1569,23 @@ export const AdminDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Mô tả khóa học</label>
-                  <textarea rows={3} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all text-sm font-medium custom-scrollbar" placeholder="Tóm tắt nội dung khóa học..." value={newCourse.description || ''} onChange={e => setNewCourse({...newCourse, description: e.target.value})} />
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Mô tả khóa học</label>
+                  <textarea rows={10} className="w-full px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all text-sm font-medium custom-scrollbar resize-none" placeholder="Tóm tắt nội dung khóa học..." value={newCourse.description || ''} onChange={e => setNewCourse({...newCourse, description: e.target.value})} />
                   <label 
-                    className="flex items-center gap-2 mt-3 cursor-pointer group/manual w-fit"
+                    className="flex items-center gap-2 mt-2 cursor-pointer group/manual w-fit"
                     onClick={() => setNewCourse({...newCourse, requiresManualAccess: !newCourse.requiresManualAccess})}
                   >
-                    <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${newCourse.requiresManualAccess ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-slate-300 group-hover/manual:border-emerald-400'}`}>
-                      {newCourse.requiresManualAccess && <Check className="w-3 h-3 text-white" />}
+                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${newCourse.requiresManualAccess ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-slate-300 group-hover/manual:border-emerald-400'}`}>
+                      {newCourse.requiresManualAccess && <Check className="w-2.5 h-2.5 text-white" />}
                     </div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 select-none">Khóa học duyệt thủ công (Cấp quyền qua Email)</span>
                   </label>
                 </div>
 
                 {/* URLs Section */}
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
                         <Eye className="w-3 h-3" /> Link đọc thử
